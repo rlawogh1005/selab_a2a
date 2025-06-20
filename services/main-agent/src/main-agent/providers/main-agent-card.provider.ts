@@ -2,12 +2,29 @@ import { Injectable } from '@nestjs/common';
 import { AgentCard } from '@a2a-js/sdk';
 
 @Injectable()
-export class TourismAgentCardProvider {
+export class MainAgentCardProvider {
   private readonly agentCard: AgentCard = {
-    name: '관광 정보 전문가 (NestJS)',
-    url: 'http://localhost:3002/',
-    skills: [{ id: 'search_attractions', name: '관광지 검색', ... }],
-    // ...
+    name: '메인 에이전트 (NestJS)',
+    url: 'http://localhost:3000/',
+    skills: [
+      {
+        id: 'main_agent',
+        name: '메인 에이전트',
+        description: '메인 에이전트',
+        tags: [],
+      },
+    ],
+    description: '메인 에이전트',
+    version: '1.0.0',
+    capabilities: {
+      streaming: false,
+      pushNotifications: false,
+      stateTransitionHistory: true,
+    },
+    defaultInputModes: ['text/plain'],
+    defaultOutputModes: ['text/plain'],
   };
-  getCard(): AgentCard { return this.agentCard; }
+  getCard(): AgentCard {
+    return this.agentCard;
+  }
 }

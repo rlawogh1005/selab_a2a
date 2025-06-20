@@ -1,34 +1,23 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
-import { MainAgentService } from './main-agent.service';
-import { CreateMainAgentDto } from './dto/create-main-agent.dto';
-import { UpdateMainAgentDto } from './dto/update-main-agent.dto';
+import { Controller, Get, Post, Body } from '@nestjs/common';
+import { MainAgentExecutorProvider } from './providers/main-agent-executor.provider';
+import { MainAgentCardProvider } from './providers/main-agent-card.provider';
+import { AgentCard, Task } from '@a2a-js/sdk';
+import { RequestContextDto } from './dto/main-agent-request-context.dto';
 
-@Controller('main-agent')
+@Controller()
 export class MainAgentController {
-  constructor(private readonly mainAgentService: MainAgentService) {}
+  constructor(
+    private readonly mainAgentExecutor: MainAgentExecutorProvider,
+    private readonly mainAgentCardProvider: MainAgentCardProvider,
+  ) {}
 
-  @Post()
-  create(@Body() createMainAgentDto: CreateMainAgentDto) {
-    return this.mainAgentService.create(createMainAgentDto);
+  @Get('.well-known/agent.json')
+  getAgentCard(): AgentCard {
+    return this.mainAgentCardProvider.getCard();
   }
 
-  @Get()
-  findAll() {
-    return this.mainAgentService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.mainAgentService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateMainAgentDto: UpdateMainAgentDto) {
-    return this.mainAgentService.update(+id, updateMainAgentDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.mainAgentService.remove(+id);
+  @Post('execute')
+  executeTask(@Body() requestContextDto: RequestContextDto): Promise<Task> {
+    return this.mainAgentExecutor.executeTask(requestContextDto);
   }
 }
