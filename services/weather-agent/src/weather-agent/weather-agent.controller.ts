@@ -1,34 +1,22 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
-import { WeatherAgentService } from './weather-agent.service';
-import { CreateWeatherAgentDto } from './dto/create-weather-agent.dto';
-import { UpdateWeatherAgentDto } from './dto/update-weather-agent.dto';
+import { Controller, Post, Body } from '@nestjs/common';
+import { WeatherAgentRequestContextDto } from './dto/weather-agent-request-context.dto';
+import { Task } from '@a2a-js/sdk';
+import { WeatherAgentExecutorProvider } from './providers/weather-agent-executor.provider';
+import { Logger } from '@nestjs/common';
 
-@Controller('weather-agent')
+@Controller()
 export class WeatherAgentController {
-  constructor(private readonly weatherAgentService: WeatherAgentService) {}
+  private readonly logger = new Logger(WeatherAgentController.name);
 
-  @Post()
-  create(@Body() createWeatherAgentDto: CreateWeatherAgentDto) {
-    return this.weatherAgentService.create(createWeatherAgentDto);
-  }
+  constructor(
+    private readonly weatherAgentExecutor: WeatherAgentExecutorProvider,
+  ) {}
 
-  @Get()
-  findAll() {
-    return this.weatherAgentService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.weatherAgentService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateWeatherAgentDto: UpdateWeatherAgentDto) {
-    return this.weatherAgentService.update(+id, updateWeatherAgentDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.weatherAgentService.remove(+id);
+  @Post('tasks')
+  executeTask(
+    @Body() requestContextDto: WeatherAgentRequestContextDto,
+  ): Promise<Task> {
+    this.logger.log('Weather agent task requested');
+    return this.weatherAgentExecutor.executeTask(requestContextDto);
   }
 }

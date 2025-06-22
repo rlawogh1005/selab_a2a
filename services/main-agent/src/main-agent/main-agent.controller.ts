@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body } from '@nestjs/common';
 import { MainAgentExecutorProvider } from './providers/main-agent-executor.provider';
 import { MainAgentCardProvider } from './providers/main-agent-card.provider';
 import { AgentCard, Task } from '@a2a-js/sdk';
-import { RequestContextDto } from './dto/main-agent-request-context.dto';
+import { MainAgentRequestContextDto } from './dto/main-agent-request-context.dto'
 
 @Controller()
 export class MainAgentController {
@@ -17,7 +17,7 @@ export class MainAgentController {
   }
 
   @Post('execute')
-  executeTask(@Body() requestContextDto: RequestContextDto): Promise<Task> {
+  executeTask(@Body() requestContextDto: MainAgentRequestContextDto): Promise<Task> {
     return this.mainAgentExecutor.executeTask(requestContextDto);
   }
 }

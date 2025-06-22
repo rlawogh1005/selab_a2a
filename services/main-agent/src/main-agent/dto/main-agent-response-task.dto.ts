@@ -5,6 +5,7 @@ import { MainAgentRequestContextDto } from './main-agent-request-context.dto';
 export function createCompletedTask(
   responseText: string,
   context?: MainAgentRequestContextDto,
+  personaId?: string,
 ): Task {
   const taskId = context?.task?.id ?? uuidv4();
   const contextId = context?.contextId ?? uuidv4();
@@ -26,12 +27,15 @@ export function createCompletedTask(
     },
     history: context?.history ?? [],
     artifacts: [],
+    // personaId가 있으면 추가
+    ...(personaId && { personaId }),
   };
 }
 
 export function createFailedTask(
   errorMessage: string,
   context?: MainAgentRequestContextDto,
+  personaId?: string,
 ): Task {
   const taskId = context?.task?.id ?? uuidv4();
   const contextId = context?.contextId ?? uuidv4();
@@ -53,5 +57,7 @@ export function createFailedTask(
     },
     history: context?.history ?? [],
     artifacts: [],
+    // personaId가 있으면 추가
+    ...(personaId && { personaId }),
   };
 } 
