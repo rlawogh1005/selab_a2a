@@ -21,3 +21,15 @@ services/maru-agent/.vscode
 services/maru-agent/.env
 services/maru-agent/.env.local
 services/maru-agent/.env.development.local
+
+services/sori-agent/node_modules
+services/sori-agent/dist
+services/sori-agent/build
+services/sori-agent/logs
+services/sori-agent/coverage
+services/sori-agent/.nyc_output
+services/sori-agent/.idea
+services/sori-agent/.vscode
+services/sori-agent/.env
+services/sori-agent/.env.local
+services/sori-agent/.env.development.local

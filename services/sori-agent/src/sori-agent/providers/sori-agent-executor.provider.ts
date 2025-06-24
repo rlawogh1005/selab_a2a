@@ -2,12 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Task } from '@a2a-js/sdk';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { createCompletedTask, createFailedTask } from '../dto/maru-agent-response-task.dto';
-import { MaruAgentRequestContextDto } from '../dto/maru-agent-request-context.dto';
+import { createCompletedTask, createFailedTask } from '../dto/sori-agent-response-task.dto';
+import { SoriAgentRequestContextDto } from '../dto/sori-agent-request-context.dto';
 
 @Injectable()
-export class MaruAgentExecutorProvider {
-  private readonly logger = new Logger(MaruAgentExecutorProvider.name);
+export class SoriAgentExecutorProvider {
+  private readonly logger = new Logger(SoriAgentExecutorProvider.name);
 
   constructor(private readonly httpService: HttpService) {
     // 필수 환경 변수 확인
@@ -20,7 +20,7 @@ export class MaruAgentExecutorProvider {
   }
 
   async executeTask(
-    requestContextDto: MaruAgentRequestContextDto,
+    requestContextDto: SoriAgentRequestContextDto,
   ): Promise<Task> {
     const userPrompt =
       (
@@ -28,7 +28,7 @@ export class MaruAgentExecutorProvider {
           text: string;
         }
       )?.text || '';
-    this.logger.log(`Maru agent started for prompt: "${userPrompt}"`);
+    this.logger.log(`Sori agent started for prompt: "${userPrompt}"`);
 
     try {
       // 히스토리를 기반으로 Wanted LaaS messages 구성
@@ -84,9 +84,9 @@ export class MaruAgentExecutorProvider {
         ],
       });
     } catch (error) {
-      this.logger.error(`Maru agent failed: ${error.message}`, error.stack);
+      this.logger.error(`Sori agent failed: ${error.message}`, error.stack);
       return createFailedTask(
-        `Maru agent processing error: ${error.message}`,
+        `Sori agent processing error: ${error.message}`,
         requestContextDto,
       );
     }
