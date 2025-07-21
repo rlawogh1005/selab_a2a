@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Task } from '@a2a-js/sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { FoodAgentRequestContextDto } from '../dto/food-agent-request-context.dto';
+import { DeveloperAgentRequestContextDto } from '../dto/developer-agent-request-context.dto';
 import {
   createCompletedTask,
   createFailedTask,
-} from '../dto/food-agent-response-task.dto';
+} from '../dto/developer-agent-response-task.dto';
 import { ConfigService } from '@nestjs/config';
 
 // 에이전트 이름과 URL을 매핑
@@ -16,8 +16,8 @@ const AGENT_ENDPOINTS: Record<string, string> = {
 };
 
 @Injectable()
-export class FoodAgentExecutorProvider {
-  private readonly logger = new Logger(FoodAgentExecutorProvider.name);
+export class DeveloperAgentExecutorProvider {
+  private readonly logger = new Logger(DeveloperAgentExecutorProvider.name);
   private readonly model: any; // Gemini Model
 
   constructor(private readonly configService: ConfigService) {
@@ -30,7 +30,7 @@ export class FoodAgentExecutorProvider {
   }
 
   async executeTask(
-    requestContextDto: FoodAgentRequestContextDto,
+    requestContextDto: DeveloperAgentRequestContextDto,
   ): Promise<Task> {
     const userPrompt =
       (
@@ -38,19 +38,19 @@ export class FoodAgentExecutorProvider {
           text: string;
         }
       )?.text || '';
-    this.logger.log(`Food agent started for prompt: "${userPrompt}"`);
+    this.logger.log(`Developer agent started for prompt: "${userPrompt}"`);
 
     try {
-      const prompt = `You are a helpful assistant specializing in food recommendations. Answer the following user query about food: ${userPrompt}`;
+      const prompt = `You are a Developer. Answer the following user query about Development: ${userPrompt}`;
       const result = await this.model.generateContent(prompt);
       const response = result.response;
       const responseText = response.text();
 
       return createCompletedTask(responseText, requestContextDto);
     } catch (error) {
-      this.logger.error(`Food agent failed: ${error.message}`, error.stack);
+      this.logger.error(`Developer agent failed: ${error.message}`, error.stack);
       return createFailedTask(
-        `Food agent processing error: ${error.message}`,
+        `Developer agent processing error: ${error.message}`,
         requestContextDto,
       );
     }

@@ -1,10 +1,10 @@
 import { Task } from '@a2a-js/sdk';
 import { v4 as uuidv4 } from 'uuid';
-import { FoodAgentRequestContextDto } from './food-agent-request-context.dto';
+import { DeveloperAgentRequestContextDto } from './developer-agent-request-context.dto';
 
 export function createCompletedTask(
   responseText: string,
-  context?: FoodAgentRequestContextDto,
+  context?: DeveloperAgentRequestContextDto,
 ): Task {
   const taskId = context?.task?.id ?? uuidv4();
   const contextId = context?.contextId ?? uuidv4();
@@ -31,7 +31,7 @@ export function createCompletedTask(
 
 export function createFailedTask(
   errorMessage: string,
-  context?: FoodAgentRequestContextDto,
+  context?: DeveloperAgentRequestContextDto,
 ): Task {
   const taskId = context?.task?.id ?? uuidv4();
   const contextId = context?.contextId ?? uuidv4();
