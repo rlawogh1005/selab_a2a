@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -7,247 +7,222 @@ import { MainAgentRequestContextDto } from '../dto/main-agent-request-context.dt
 import { Task } from '@a2a-js/sdk';
 import { createCompletedTask, createFailedTask } from '../dto/main-agent-response-task.dto';
 import { ConfigService } from '@nestjs/config';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Requirement } from '../entities/requirement.entity';
+import { ConversationHistory } from '../entities/conversation-history.entity';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class MainAgentExecutorProvider {
-  private readonly logger = new Logger(MainAgentExecutorProvider.name);
-  private readonly model: any; // Gemini Model
-  private readonly agentEndpoints: Record<string, string>; // env에 따라 동적으로 결정
+    private readonly logger = new Logger(MainAgentExecutorProvider.name);
+    private readonly model: any; // Gemini Model
+    private readonly agentEndpoints: Record<string, string>; // env에 따라 동적으로 결정
 
-  /**
-   * contextId 별 대화 히스토리를 저장 (In-memory)
-   * - Message 배열과 lastUsed 타임스탬프를 보존
-   * - TTL이 지나면 자동 만료
-   */
-  private readonly conversations = new Map<
-    string,
-    { messages: any[]; lastUsed: number }
-  >();
+    // 기본 30분, 환경변수 MAIN_CONV_TTL_MS 로 재정의 가능
+    private readonly CONV_TTL_MS = Number(process.env.MAIN_CONV_TTL_MS || 30 * 60 * 1000);
 
-  // 기본 30분, 환경변수 MAIN_CONV_TTL_MS 로 재정의 가능
-  private readonly CONV_TTL_MS = Number(process.env.MAIN_CONV_TTL_MS || 30 * 60 * 1000);
-
-  constructor(
-    private readonly httpService: HttpService,
-    private readonly configService: ConfigService,
-  ) {
-    const apiKey = this.configService.get<string>('GEMINI_API_KEY');
-    if (!apiKey) {
-      throw new Error('GEMINI_API_KEY is not set in the environment variables.');
-    }
-    const genAI = new GoogleGenerativeAI(apiKey);
-    this.model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash-latest',
-      tools: specialistAgentTools,
-    });
-    this.agentEndpoints = {
-      maru_agent: this.configService.get<string>('AGENT_MARU_ENDPOINT', ''),
-      sodam_agent: this.configService.get<string>('AGENT_SODAM_ENDPOINT', ''),
-    };
-  }
-
-  async executeTask(requestContextDto: MainAgentRequestContextDto): Promise<Task> {
-    const userPrompt =
-      (
-        requestContextDto.userMessage.parts.find(p => 'text' in p) as {
-          text: string;
+    constructor(
+        private readonly httpService: HttpService,
+        private readonly configService: ConfigService,
+        @Inject(CACHE_MANAGER) private readonly cache: Cache,
+        @InjectRepository(Requirement)
+        @InjectRepository(ConversationHistory)
+        private readonly requirementRepo: Repository<Requirement>,
+        private readonly convHistoryRepo: Repository<ConversationHistory>,
+    ) {
+        // 제미나이 키설정
+        const apiKey = this.configService.get<string>('GEMINI_API_KEY');
+        if (!apiKey) {
+            throw new Error('GEMINI_API_KEY is not set in the environment variables.');
         }
-      )?.text || '';
-    this.logger.log(`Orchestration started for prompt: "${userPrompt}"`);
-
-    try {
-      const contextId = requestContextDto.contextId || 'default';
-
-      // 기존 히스토리 가져오기 + TTL 체크
-      let entry = this.conversations.get(contextId);
-      if (entry && Date.now() - entry.lastUsed > this.CONV_TTL_MS) {
-        this.conversations.delete(contextId);
-        entry = undefined;
-      }
-
-      let conversationHistory: any[] = entry?.messages || [];
-
-      // 이번 사용자 메시지 추가
-      conversationHistory = [...conversationHistory, requestContextDto.userMessage];
-
-      // Gemini 대화 히스토리 포맷으로 변환
-      const geminiHistory = conversationHistory.map(msg => {
-        const text = (msg.parts.find((p: any) => 'text' in p) as { text: string })?.text || '';
-        return {
-          role: msg.role === 'agent' ? 'model' : 'user',
-          parts: [{ text }],
-        } as { role: 'user' | 'model'; parts: { text: string }[] };
-      });
-
-      // 1. LLM에게 계획 수립 요청 (의도 분석) - 어떤 에이전트를 호출해야 하는지 결정
-      const chat = this.model.startChat({
-        history: geminiHistory,
-        systemInstruction: {
-          role: 'system',
-          parts: [{ text:
-            // Main-agent의 시스템 메시지
-`
-## 0. Important Instructions
-- You must always call maru_agent first.
-- Never, ever, answer the user's question directly.
-
-## 1. Identity and Core Mission
-- You are the central routing agent in an Agent-to-Agent (A2A) system.
-- Your **exclusive mission** is to analyze the user's request and select the single most appropriate Sub-Agent to handle it.
-
-## 2. Available Sub-Agents (Tool List)
-This is the list of Sub-Agents you can dispatch tasks to. Analyze the user's query and choose **only one** from this list.
-
-- **'maru_agent' (Highest Priority)**
-  - **Role:** Primary Travel Planner.
-  - **Description:** This is the main, highest-priority agent for handling all comprehensive travel-related tasks. This includes creating itineraries, coordinating schedules, and providing information on flights or accommodations. If a user's request is framed within a travel context, you must choose this agent, even if it also mentions specific activities like dining or shopping.
-  - **Keywords:** "trip", "travel", "itinerary", "plan my vacation", "schedule for 2 days", "visit", "tour", "holiday", "getaway", "여행", "여행지", "여행 계획", "일정", "스케줄", "휴가", "관광", "여행 코스".
-
-- **'sodam_agent' (Standard Priority)**
-  - **Role:** Restaurant and Food Specialist.
-  - **Description:** Use this agent only when the user's request is exclusively about finding restaurants, cafes, or specific food recommendations, and is not part of a broader travel planning request.
-  - **Keywords:** "restaurant", "food", "eat", "dining", "cafe", "tasty", "recommend a place to eat", "맛집", "식당", "음식", "밥집", "카페", "레스토랑", "추천", "먹거리".
-` }],
-        },
-      });
-      const result = await chat.sendMessage(userPrompt);
-      const llmResponse = result.response;
-      const functionCalls = llmResponse.functionCalls();
-
-      // sub-agent 없이 응답해도 되겠다.
-      if (!functionCalls || functionCalls.length === 0) {
-        // LLM이 에이전트 호출 없이 직접 답변하기로 결정했지만 시스템 정책상 허용되지 않음 -> maru_agent 로 포워딩
-        this.logger.warn('LLM returned no function call. Falling back to maru_agent.');
-
-        const fallbackAgentName = 'maru_agent';
-        const agentUrl = this.agentEndpoints[fallbackAgentName];
-
-        if (!agentUrl) {
-          this.logger.error('maru_agent endpoint is not configured.');
-          return createFailedTask('maru_agent endpoint not configured', requestContextDto);
-        }
-
-        const subUserMessage = {
-          kind: 'message',
-          role: 'user',
-          parts: [{ kind: 'text', text: userPrompt }],
-        } as any;
-
-        const subtaskPayload = {
-          contextId,
-          history: conversationHistory, // 이전까지의 히스토리
-          userMessage: subUserMessage,
+        const genAI = new GoogleGenerativeAI(apiKey);
+        // 제미나이 모델 설정
+        this.model = genAI.getGenerativeModel({
+            model: 'gemini-2.5-flash',
+            tools: specialistAgentTools,
+        });
+        // 서브-에이전트 엔드포인트 설정
+        this.agentEndpoints = {
+            developer_agent: this.configService.get<string>('AGENT_DEVELOPER_ENDPOINT', ''),
+            // designer_agent: this.configService.get<string>('AGENT_DESIGNER_ENDPOINT', ''),
+            // tester_agent: this.configService.get<string>('AGENT_TESTER_ENDPOINT', ''),
+            // project_manager_agent: this.configService.get<string>('AGENT_PROJECT_MANAGER_ENDPOINT', ''),
+            // user_agent: this.configService.get<string>('AGENT_USER_ENDPOINT', ''),
+            // client_agent: this.configService.get<string>('AGENT_CLIENT_ENDPOINT', ''),
+            // product_owner_agent: this.configService.get<string>('AGENT_PRODUCT_OWNER_ENDPOINT', ''),
+            // sales_agent: this.configService.get<string>('AGENT_SALES_ENDPOINT', ''),
+            // marketing_agent: this.configService.get<string>('AGENT_MARKETING_ENDPOINT', ''),
+            // business_agent: this.configService.get<string>('AGENT_BUSINESS_ENDPOINT', ''),
+            // hr_agent: this.configService.get<string>('AGENT_HR_ENDPOINT', ''),
+            // legal_agent: this.configService.get<string>('AGENT_LEGAL_ENDPOINT', ''),
+            // finance_agent: this.configService.get<string>('AGENT_FINANCE_ENDPOINT', ''),
         };
+    }
+
+    async executeTask(requestContextDto: MainAgentRequestContextDto): Promise<Task> {
+        const userPrompt =
+        (
+            requestContextDto.userMessage.parts.find(p => 'text' in p) as {
+            text: string;
+            }
+        )?.text || '';
+        this.logger.log(`Orchestration started for prompt: "${userPrompt}"`);
 
         try {
-          const agentResponse = await firstValueFrom(this.httpService.post(agentUrl, subtaskPayload));
-          const agentAnswer = this.extractTextFromResponse(agentResponse, `[${fallbackAgentName} 응답 실패]`);
+            let contextId = requestContextDto.contextId;
+            if (!contextId) {
+                contextId = uuidv4(); // 자동 UUID 생성으로 멀티유저 격리
+                this.logger.log(`Generated new contextId: ${contextId}`);
+            }
 
-          const agentMessage = {
-            kind: 'message',
-            role: 'agent',
-            parts: [{ kind: 'text', text: agentAnswer }],
-          } as any;
+            // 단기 기억 (캐시)에서 히스토리 로드, 없으면 장기 기억 (DB)에서 로드
+            let conversationHistoryStr = await this.cache.get<string>(contextId);
+            let conversationHistory: any[] = conversationHistoryStr ? JSON.parse(conversationHistoryStr) : [];
+            if (conversationHistory.length === 0) {
+                const dbHistory = await this.convHistoryRepo.findOne(
+                    { 
+                        where: { contextId }, 
+                        order: { updatedAt: 'DESC' } 
+                    }
+                );
+                if (dbHistory) {
+                    conversationHistory = dbHistory.history;
+                }
+            }
 
-          const updatedHistory = [...conversationHistory, subUserMessage, agentMessage];
+            conversationHistory = [...conversationHistory, requestContextDto.userMessage];
 
-          // 히스토리 저장
-          this.conversations.set(contextId, {
-            messages: updatedHistory,
-            lastUsed: Date.now(),
-          });
+            // 요구사항 생성 또는 아이데이션/브레인스토밍 로직 (모든 입력에 적용)
+            // numChat을 사용해 요구사항 개수 결정
+            const numChat = this.model.startChat({ history: [] });
+            const numResult = await numChat.sendMessage(`이 입력에 대해 생성할 소프트웨어 요구사항, 아이디어, 또는 브레인스토밍 항목 개수는 몇 개가 적절한가? 숫자만 답변해: ${userPrompt}`);
+            let numRequirements = parseInt(numResult.response.text().trim(), 10);
+            if (isNaN(numRequirements) || numRequirements < 1 || numRequirements > 10) {
+                numRequirements = 3; // validation: 범위 외면 기본값
+                this.logger.warn(`Invalid numRequirements from LLM, falling back to 3`);
+            }
 
-          // 사용자에게 반환할 응답에는 직전 sub-agent 의 응답만 포함하도록, history 를 제거한 컨텍스트를 전달
-          return createCompletedTask(
-            agentAnswer,
-            {
-              userMessage: requestContextDto.userMessage,
-              contextId: requestContextDto.contextId,
-              task: requestContextDto.task,
-            },
-            'maru',
-          );
+            const agentRoles = {
+                developer_agent: '소프트웨어 개발자',
+                // project_manager_agent: '프로젝트 매니저',
+                // tester_agent: '테스터',
+                // user_agent: '최종 사용자',
+                // client_agent: '클라이언트',
+                // product_owner_agent: '제품 책임자',
+                // sales_agent: '세일즈',
+                // marketing_agent: '마케팅',
+                // business_agent: '비즈니스',
+                // hr_agent: '인사',
+                // legal_agent: '법무',
+                // finance_agent: '재무',
+            };
+            const availableAgents = Object.keys(agentRoles);
+
+            const selectedAgents: string[] = [];
+            for (let i = 0; i < numRequirements; i++) {
+                selectedAgents.push(availableAgents[i % availableAgents.length]);
+            }
+
+            const promises = selectedAgents.map(async (agentName, index) => {
+                const role = agentRoles[agentName];
+                const subPrompt = 
+                // 당신은 소프트웨어 개발의 ${role}입니다. 주어진 입력 "${userPrompt}"에 대해 하나의 요구사항, 아이디어, 또는 브레인스토밍 아이템을 생성하세요. 
+                `
+                당신은 지금부터 세계 최고 수준의 **[${role}]**입니다. 당신의 의견은 프로젝트의 성패를 좌우할 만큼 중요하며, 당신은 항상 날카로운 통찰력과 현실적인 해결책을 제시합니다.
+                주어진 입력 "${userPrompt}"에 대해 하나의 요구사항, 아이디어, 또는 브레인스토밍 아이템을 생성하세요.
+                `;
+                const subUserMessage = {
+                    kind: 'message',
+                    role: 'user',
+                    parts: [{ kind: 'text', text: subPrompt }],
+                };
+                const subtaskPayload = {
+                    contextId,
+                    history: conversationHistory,
+                    userMessage: subUserMessage,
+                };
+                const agentUrl = this.getAgentUrl(agentName);
+                if (!agentUrl) return { agentName, answer: 'Unknown Agent' };
+                let agentResponse;
+                let retryCount = 0;
+                const maxRetries = 2;
+                while (retryCount <= maxRetries) {
+                    try {
+                        agentResponse = await firstValueFrom(this.httpService.post(agentUrl, subtaskPayload));
+                        break;
+                    } catch (error) {
+                        retryCount++;
+                        if (retryCount > maxRetries) {
+                            this.logger.error(`Agent ${agentName} call failed after ${maxRetries} retries: ${error.message}`);
+                            return { agentName, answer: 'Agent call failed after retries' };
+                        }
+                        this.logger.warn(`Retrying agent ${agentName} call (attempt ${retryCount})`);
+                    }
+                }
+                const reqContent = this.extractTextFromResponse(agentResponse, `[${agentName} 응답 실패]`);
+                if (!reqContent || reqContent.trim() === '') {
+                    this.logger.warn(`Empty response from ${agentName}, skipping save`);
+                    return { agentName, answer: 'Empty response' };
+                }
+                const requirement = this.requirementRepo.create({
+                    content: reqContent,
+                    agentName,
+                    contextId,
+                });
+                await this.requirementRepo.save(requirement);
+                return reqContent;
+            });
+
+            const results = await Promise.all(promises);
+            const combinedAnswer = results.map((r, i) => `Item ${i+1}: ${r}`).join('\n');
+
+            const agentMessage = {
+                kind: 'message',
+                role: 'agent',
+                parts: [{ kind: 'text', text: combinedAnswer }],
+            };
+            const updatedHistory = [...conversationHistory, agentMessage];
+
+            // 기억 저장
+            await this.cache.set(contextId, JSON.stringify(updatedHistory), this.CONV_TTL_MS / 1000);
+            let dbEntry = await this.convHistoryRepo.findOne({ where: { contextId } });
+            if (!dbEntry) {
+                dbEntry = this.convHistoryRepo.create({
+                contextId,
+                history: updatedHistory,
+                lastUsed: new Date(),
+                });
+            } else {
+                dbEntry.history = updatedHistory;
+                dbEntry.lastUsed = new Date();
+            }
+            await this.convHistoryRepo.save(dbEntry);
+
+            return createCompletedTask(combinedAnswer, requestContextDto);
         } catch (error) {
-          this.logger.error(`Fallback agent call failed: ${error.message}`, error.stack);
-          return createFailedTask(`Fallback agent call failed: ${error.message}`, requestContextDto, 'maru');
+            this.logger.error(`Orchestration failed: ${error.message}`, error.stack);
+            return createFailedTask(
+                `오케스트레이션 중 오류 발생: ${error.message}`,
+                requestContextDto,
+            );
         }
-      }
-
-      this.logger.log(`LLM planned to call: ${functionCalls.map(c => c.name).join(', ')}`);
-
-      const firstCall = functionCalls[0];
-      const agentName = firstCall.name;
-      const agentUrl = this.agentEndpoints[agentName];
-
-      if (!agentUrl) {
-        this.logger.warn(`Unknown agent requested by LLM: ${agentName}`);
-        return createFailedTask('Unknown Agent selected', requestContextDto);
-      }
-
-      // sub-agent 호출용 페이로드 구성 (현재 히스토리 + 새 userMessage)
-      const subUserMessage = {
-        kind: 'message',
-        role: 'user',
-        parts: [{ kind: 'text', text: firstCall.args?.query || userPrompt }],
-      } as any;
-
-      const subtaskPayload = {
-        contextId,
-        history: conversationHistory, // 이전까지의 히스토리
-        userMessage: subUserMessage,
-      };
-
-      const agentResponse = await firstValueFrom(this.httpService.post(agentUrl, subtaskPayload));
-
-      const agentAnswer = this.extractTextFromResponse(agentResponse, `[${agentName} 응답 실패]`);
-
-      const personaMap: Record<string, string> = {
-        maru_agent: 'maru',
-        sodam_agent: 'sodam',
-      };
-
-      const personaId = personaMap[agentName] || 'maru';
-
-      const agentMessage = {
-        kind: 'message',
-        role: 'agent',
-        parts: [{ kind: 'text', text: agentAnswer }],
-      } as any;
-
-      const updatedHistory = [...conversationHistory, subUserMessage, agentMessage];
-
-      // 히스토리 저장
-      this.conversations.set(contextId, {
-        messages: updatedHistory,
-        lastUsed: Date.now(),
-      });
-
-      // 사용자에게 반환할 응답에는 직전 sub-agent 의 응답만 포함하도록, history 를 제거한 컨텍스트를 전달
-      return createCompletedTask(
-        agentAnswer,
-        {
-          userMessage: requestContextDto.userMessage,
-          contextId: requestContextDto.contextId,
-          task: requestContextDto.task,
-        },
-        personaId,
-      );
-    } catch (error) {
-      this.logger.error(`Orchestration failed: ${error.message}`, error.stack);
-      return createFailedTask(
-        `오케스트레이션 중 오류 발생: ${error.message}`,
-        requestContextDto,
-        'maru', // 기본 페르소나
-      );
     }
-  }
 
-  private extractTextFromResponse(response: any, fallbackText: string): string {
-    // 다양한 응답 구조에 대응
-    return (
-      response?.data?.status?.message?.parts?.[0]?.text ||
-      response?.data?.result?.parts?.[0]?.text ||
-      fallbackText
-    );
-  }
+    private extractTextFromResponse(response: any, fallbackText: string): string {
+        // 다양한 응답 구조에 대응
+        return (
+            response?.data?.status?.message?.parts?.[0]?.text ||
+            response?.data?.result?.parts?.[0]?.text ||
+            fallbackText
+        );
+    }
+
+    private getAgentUrl(agentName: string): string | undefined {
+        const base = this.agentEndpoints[agentName];
+        if (!base) return undefined;
+        return base.endsWith('/tasks') ? base : base.replace(/\/$/, '') + '/tasks';
+    }
 }

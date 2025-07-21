@@ -1,54 +1,204 @@
 import { SchemaType, Tool } from '@google/generative-ai';
 
-// 각 전문가 에이전트의 skill을 LLM이 사용할 수 있는 Tool로 정의
+// 각 전문가 에이전트의 skill을 LLM이 사용할 수 있는 Tool로 정의(Agent Card 대체)
 export const specialistAgentTools: Tool[] = [
   {
-    functionDeclarations: [
-      {
-        name: 'maru_agent',
-        description: '여행 일정 수립과 전반적인 스케줄링을 도와주는 최고 우선순위 에이전트입니다. 사용자의 첫 번째 상호작용은 반드시 maru_agent를 호출해야 합니다.',
-        parameters: {
-          type: SchemaType.OBJECT,
-          properties: {
-            query: {
-              type: SchemaType.STRING,
-              description: '여행 및 일정 관련 범용적인 질문',
+        functionDeclarations: [
+            {
+                name: 'developer_agent',
+                description: '개발자 에이전트입니다.',
+                parameters: {
+                type: SchemaType.OBJECT,
+                properties: {
+                    query: {
+                    type: SchemaType.STRING,
+                    description: '개발자 관점에서 요구사항을 생성합니다.',
+                    },
+                    personaId: { type: SchemaType.STRING, description: '페르소나 ID (developer)' },
+                },
+                required: ['query'],
+                },
             },
-            personaId: { type: SchemaType.STRING, description: '페르소나 ID (maru)' },
-          },
-          required: ['query'],
-        },
-      },
-      {
-        name: 'sodam_agent',
-        description: '소담이는 맛집(식당, 카페 등)을 추천하는 음식 전문 에이전트입니다. 지역·음식 키워드(예: "강남 파스타 맛집", "제주 카페 추천")와 함께 사용하세요.',
-        parameters: {
-          type: SchemaType.OBJECT,
-          properties: {
-            query: {
-              type: SchemaType.STRING,
-              description: '음식/맛집 관련 구체적인 질문',
+            {
+                name: 'designer_agent',
+                description: 'UI/UX 디자이너 에이전트입니다.',
+                parameters: {
+                type: SchemaType.OBJECT,
+                properties: {
+                    query: {
+                    type: SchemaType.STRING,
+                    description: 'UI/UX 디자이너 관점에서 요구사항을 생성합니다.',
+                    },
+                    personaId: { type: SchemaType.STRING, description: '페르소나 ID (designer)' },
+                },
+                required: ['query'],
+                },
             },
-            personaId: { type: SchemaType.STRING, description: '페르소나 ID (sodam)' },
-          },
-          required: ['query'],
-        },
-      },
-      {
-        name: 'sori_agent',
-        description: '소리는 지역 정보를 기반으로 여행지를 추천합니다.',
-        parameters: {
-          type: SchemaType.OBJECT,
-          properties: {
-            query: {
-              type: SchemaType.STRING,
-              description: '지역 정보를 포함하는 여행지 추천 요청 (예: "다음 주 제주 2박 3일 일정 짜줘", "부산 여행 코스 추천해줘")',
+            {
+                name: 'tester_agent',
+                description: '테스터 에이전트입니다.',
+                parameters: {
+                type: SchemaType.OBJECT,
+                properties: {
+                    query: {
+                    type: SchemaType.STRING,
+                    description: '테스터 관점에서 요구사항을 생성합니다.',
+                    },
+                    personaId: { type: SchemaType.STRING, description: '페르소나 ID (tester)' },
+                },
+                required: ['query'],
+                },
             },
-            personaId: { type: SchemaType.STRING, description: '페르소나 ID (sori)' },
-          },
-          required: ['query'],
-        },
-      },
-    ],
+            {
+                name: 'project_manager_agent',
+                description: '프로젝트 관리자 에이전트입니다.',
+                parameters: {
+                type: SchemaType.OBJECT,
+                properties: {
+                    query: {
+                    type: SchemaType.STRING,
+                    description: '프로젝트 관리자 관점에서 요구사항을 생성합니다.',
+                    },
+                    personaId: { type: SchemaType.STRING, description: '페르소나 ID (project_manager)' },
+                },
+                required: ['query'],
+                },
+            },
+            {
+                name: 'user_agent',
+                description: '사용자 에이전트입니다.',
+                parameters: {
+                type: SchemaType.OBJECT,
+                properties: {
+                    query: {
+                    type: SchemaType.STRING,
+                    description: '사용자 관점에서 요구사항을 생성합니다.',
+                    },
+                    personaId: { type: SchemaType.STRING, description: '페르소나 ID (user)' },
+                },
+                required: ['query'],
+                },
+            },
+            {
+                name: 'client_agent',
+                description: '클라이언트 에이전트입니다.',
+                parameters: {
+                type: SchemaType.OBJECT,
+                properties: {
+                    query: {
+                    type: SchemaType.STRING,
+                    description: '클라이언트 관점에서 요구사항을 생성합니다.',
+                    },
+                    personaId: { type: SchemaType.STRING, description: '페르소나 ID (client)' },
+                },
+                required: ['query'],
+                },
+            },
+            {
+                name: 'product_owner_agent',
+                description: '제품 책임자 에이전트입니다.',
+                parameters: {
+                type: SchemaType.OBJECT,
+                properties: {
+                    query: {
+                    type: SchemaType.STRING,
+                    description: '제품 책임자 관점에서 요구사항을 생성합니다.',
+                    },
+                    personaId: { type: SchemaType.STRING, description: '페르소나 ID (product_owner)' },
+                },
+                required: ['query'],
+                },
+            },
+            {
+                name: 'sales_agent',
+                description: '세일즈 에이전트입니다.',
+                parameters: {
+                type: SchemaType.OBJECT,
+                properties: {
+                    query: {
+                    type: SchemaType.STRING,
+                    description: '세일즈 관점에서 요구사항을 생성합니다.',
+                    },
+                    personaId: { type: SchemaType.STRING, description: '페르소나 ID (sales)' },
+                },
+                required: ['query'],
+                },
+            },
+            {
+                name: 'marketing_agent',
+                description: '마케팅 에이전트입니다.',
+                parameters: {
+                type: SchemaType.OBJECT,
+                properties: {
+                    query: {
+                    type: SchemaType.STRING,
+                    description: '마케팅 관점에서 요구사항을 생성합니다.',
+                    },
+                    personaId: { type: SchemaType.STRING, description: '페르소나 ID (marketing)' },
+                },
+                required: ['query'],
+                },
+            },
+            {
+                name: 'business_agent',
+                description: '비즈니스 에이전트입니다.',
+                parameters: {
+                type: SchemaType.OBJECT,
+                properties: {
+                    query: {
+                    type: SchemaType.STRING,
+                    description: '비즈니스 관점에서 요구사항을 생성합니다.',
+                    },
+                    personaId: { type: SchemaType.STRING, description: '페르소나 ID (business)' },
+                },
+                required: ['query'],
+                },
+            },
+            {
+                name: 'hr_agent',
+                description: '인사 에이전트입니다.',
+                parameters: {
+                type: SchemaType.OBJECT,
+                properties: {
+                    query: {
+                    type: SchemaType.STRING,
+                    description: '인사 관점에서 요구사항을 생성합니다.',
+                    },
+                    personaId: { type: SchemaType.STRING, description: '페르소나 ID (hr)' },
+                },
+                required: ['query'],
+                },
+            },
+            {
+                name: 'legal_agent',
+                description: '법무 에이전트입니다.',
+                parameters: {
+                type: SchemaType.OBJECT,
+                properties: {
+                    query: {
+                    type: SchemaType.STRING,
+                    description: '법무 관점에서 요구사항을 생성합니다.',
+                    },
+                    personaId: { type: SchemaType.STRING, description: '페르소나 ID (legal)' },
+                },
+                required: ['query'],
+                },
+            },
+            {
+                name: 'finance_agent',
+                description: '재무 에이전트입니다.',
+                parameters: {
+                type: SchemaType.OBJECT,
+                properties: {
+                    query: {
+                    type: SchemaType.STRING,
+                    description: '재무 관점에서 요구사항을 생성합니다.',
+                    },
+                    personaId: { type: SchemaType.STRING, description: '페르소나 ID (finance)' },
+                },
+                required: ['query'],
+                },
+            },
+        ],
   },
 ];

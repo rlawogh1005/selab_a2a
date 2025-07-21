@@ -3,13 +3,7 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  
-  // CORS 설정 - 8082 포트 허용
-  app.enableCors({
-    origin: 'http://localhost:8082',
-    credentials: true,
-  });
-  
+  app.setGlobalPrefix('api');
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();
